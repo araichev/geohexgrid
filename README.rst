@@ -54,7 +54,7 @@ MRCagney, this library's funder, often works with isochrones, which favour simpl
 
 Authors
 ============
-- Alex Raichev (2014-09), maintainer
+- Alex Raichev (2022-07), maintainer
 
 
 Installation
