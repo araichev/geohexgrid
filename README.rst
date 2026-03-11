@@ -69,9 +69,8 @@ See the Marimo notebook at ``notebooks/examples.py``.
 
 Notes
 ======
-- This project's development status is Alpha.
-  Alex uses this project for work and changes it breakingly when it suits his needs.
-- This project uses semantic versioning.
+- This project uses semantic versioning for release numbering.
+- Its current development status is Alpha, which means interfaces and behavior may still change in ways that are more disruptive than users of mature libraries should expect.
 - Thanks to `MRCagney <https://mrcagney.com>`_ for periodically funding this project.
 - Red Blog Games has a `great write up of hexagonal grids <https://www.redblobgames.com/grids/hexagons>`_ for computer games.
 - Alex wanted to chose a shorter name for this package, such as 'hexgrid', 'geohex', or 'hexcover', but those were already taken or too close to taken on PyPI.

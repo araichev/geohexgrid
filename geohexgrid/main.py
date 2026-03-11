@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Callable
+from typing import Callable, Literal
 import functools
 import math
 import multiprocessing as mp
@@ -43,24 +43,38 @@ def _validate_trim_mode(trim_mode) -> None:
         raise ValueError("trim_mode must be one of None, 'intersect', or 'clip'")
 
 
+def _validate_origin_pair(ox, oy) -> None:
+    if (ox is None) != (oy is None):
+        raise ValueError("ox and oy must either both be None or both be numeric")
+    if ox is not None and (not isinstance(ox, numbers.Real) or isinstance(ox, bool)):
+        raise ValueError("ox must be a real number or None")
+    if oy is not None and (not isinstance(oy, numbers.Real) or isinstance(oy, bool)):
+        raise ValueError("oy must be a real number or None")
+
+
 def _validate_geodataframe(g: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     if not isinstance(g, gpd.GeoDataFrame):
         raise TypeError("g must be a GeoDataFrame")
     if g.empty:
         raise ValueError("g must be a non-empty GeoDataFrame")
-    if "geometry" not in g:
-        raise ValueError("g must have a geometry column")
-    if g.geometry.isna().all():
+
+    try:
+        geometry = g.geometry
+    except Exception as e:
+        raise ValueError("g must have an active geometry column") from e
+
+    if geometry.isna().all():
         raise ValueError("g must contain at least one non-null geometry")
 
-    g = g.loc[g.geometry.notna()].copy()
+    g = g.loc[geometry.notna()].copy()
+    geometry = g.geometry
     if g.empty:
         raise ValueError("g must contain at least one non-null geometry")
 
-    if g.geometry.is_empty.all():
+    if geometry.is_empty.all():
         raise ValueError("g must contain at least one non-empty geometry")
 
-    g = g.loc[~g.geometry.is_empty].copy()
+    g = g.loc[~geometry.is_empty].copy()
     if g.empty:
         raise ValueError("g must contain at least one non-empty geometry")
 
@@ -90,7 +104,7 @@ def _warn_if_geographic_crs(crs) -> None:
 # Helper functions
 # -----------------------------
 #: Hexagon grid terminology taken from https://www.redblobgames.com/grids/hexagons
-def axial_round(a: float, b: float) -> tuple[int]:
+def axial_round(a: float, b: float) -> tuple[int, int]:
     """
     Given floating-point axial coordinates of a point in a hexagon grid,
     return the axial coordinates of the hexagon containing the point.
@@ -105,7 +119,7 @@ def axial_round(a: float, b: float) -> tuple[int]:
     return result
 
 
-def cartesian_to_axial(x: float, y: float, R: float) -> tuple[int]:
+def cartesian_to_axial(x: float, y: float, R: float) -> tuple[int, int]:
     """
     Given a flat-top hexagon grid of circumradius ``R`` centered at the origin and
     given Cartesian coordinates ``(x, y)`` of a point in the plane, return the
@@ -117,7 +131,7 @@ def cartesian_to_axial(x: float, y: float, R: float) -> tuple[int]:
     return axial_round((2 / 3) * x / R, (-x / 3 + (SQRT3 / 3) * y) / R)
 
 
-def axial_to_double(a: float, b: float) -> tuple[float]:
+def axial_to_double(a: float, b: float) -> tuple[float, float]:
     """
     Given axial coordinates of a hexagon in a flat-top hexagonal grid,
     return its double coordinates.
@@ -127,7 +141,7 @@ def axial_to_double(a: float, b: float) -> tuple[float]:
     return a, a + 2 * b
 
 
-def cartesian_to_double(x: float, y: float, R: float) -> tuple[float]:
+def cartesian_to_double(x: float, y: float, R: float) -> tuple[float, float]:
     """
     Given a flat-top hexagon grid of circumradius ``R`` centered at the origin and
     given Cartesian coordinates ``(x, y)`` of a point in the plane, return the
@@ -137,7 +151,7 @@ def cartesian_to_double(x: float, y: float, R: float) -> tuple[float]:
     return axial_to_double(*cartesian_to_axial(x, y, R))
 
 
-def double_to_cartesian(a: float, b: float, R: float) -> tuple[float]:
+def double_to_cartesian(a: float, b: float, R: float) -> tuple[float, float]:
     """
     Given double coordinates of a hexagon in a flat-top hexagonal grid centered
     at the origin with hexagon circumradius ``R``, return the Cartesian
@@ -152,10 +166,12 @@ def double_to_cartesian(a: float, b: float, R: float) -> tuple[float]:
 # -----------------------------
 # Main functions
 # -----------------------------
-def make_grid_points(nrows, ncols, R: float = 1, x0: float = 0, y0: float = 0):
+def make_grid_points(
+    nrows: int, ncols: int, R: float = 1, x0: float = 0, y0: float = 0
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Make the vertices and centers of a flat-top hexagon grid of circumradius ``R``
-    with ``nrows`` rows, ``ncols`` columns, and bottom left hexagon centered at
+    with ``nrows`` rows, ``ncols`` columns, and bottom-left hexagon centered at
     ``(x0, y0)``.
 
     A row is a left-to-right northeast-neighbor-southeast-neighbor zig-zag of
@@ -181,8 +197,8 @@ def make_grid_points(nrows, ncols, R: float = 1, x0: float = 0, y0: float = 0):
 
 
 def make_grid(
-    nrows,
-    ncols,
+    nrows: int,
+    ncols: int,
     R: float = 1,
     x0: float = 0,
     y0: float = 0,
@@ -191,12 +207,12 @@ def make_grid(
 ) -> gpd.GeoDataFrame:
     r"""
     Make a flat-top hexagon grid of circumradius ``R`` with ``nrows`` rows,
-    ``ncols`` columns, and bottom left hexagon centered at ``(x0, y0)``.
+    ``ncols`` columns, and bottom-left hexagon centered at ``(x0, y0)``.
 
     A row is a left-to-right northeast-neighbor-southeast-neighbor zig-zag of
     hexagons and the next row is stacked on top of the previous row.
 
-    Label the bottom left hexagon with cell ID ``f'{a0},{b0}'``, where ``a0``
+    Label the bottom-left hexagon with cell ID ``f'{a0},{b0}'``, where ``a0``
     and ``b0`` are integers with an even sum. Label the remaining hexagons with
     *double coordinates* recursively as follows. Given a hexagon with ID 'a,b',
     label its northern neighbor with ID 'a,b+2', its northeast neighbor with
@@ -208,7 +224,6 @@ def make_grid(
 
     NOTES:
     - The area of each hexagon is :math:`\frac{3 \sqrt(3)}{2} R^2`.
-    - Making a 1000 x 1000 grid with this on my computer takes about 12 seconds.
     """
     _validate_positive_int(nrows, "nrows")
     _validate_positive_int(ncols, "ncols")
@@ -227,15 +242,23 @@ def make_grid(
         f"{a0 + j},{b0 + 2 * i + j % 2}" for i in range(nrows) for j in range(ncols)
     ]
 
+    """
+    Make hexagons, each of which has vertex order:
+        v4    v3
+
+    v5             v2
+
+        v0    v1
+    """
     geometry = [
         sg.Polygon(
             [
-                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2]],
-                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2]],
-                [X[j % 2 + 1][3 * j // 2 + 2], y[2 * i + j % 2 + 1]],
-                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2 + 2]],
-                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2 + 2]],
-                [X[j % 2 + 1][3 * j // 2], y[2 * i + j % 2 + 1]],
+                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2]],  # v0
+                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2]],  # v1
+                [X[j % 2 + 1][3 * j // 2 + 2], y[2 * i + j % 2 + 1]],  # v2
+                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2 + 2]],  # v3
+                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2 + 2]],  # v4
+                [X[j % 2 + 1][3 * j // 2], y[2 * i + j % 2 + 1]],  # v5
             ]
         )
         for i in range(nrows)
@@ -250,22 +273,23 @@ def make_grid_from_bounds(
     maxx: float,
     maxy: float,
     R: float,
-    ox: float = 0,
-    oy: float = 0,
+    ox: float | None = 0,
+    oy: float | None = 0,
     crs: str | None = None,
 ) -> gpd.GeoDataFrame:
     """
-    Return flat-top hexagon grid of circumradius ``R`` with m rows and n columns,
+    Return a flat-top hexagon grid of circumradius ``R`` with m rows and n columns,
     where m and n are minimal such that the grid covers the rectangle whose
     coordinate extrema are ``minx``, ``miny``, ``maxx``, ``maxy``.
 
-    Label the hexagons with double coordinate cell IDs (see :func:`make_grid`)
+    Label the hexagons with double-coordinate cell IDs (see :func:`make_grid`)
     relative to a 0,0 hexagon centered at point ``(ox, oy)``. The grid will lie
     in the plane of the given CRS (which defaults to ``None``) and will use its
-    distance units, e.g. no units for no CRS, metres for the New Zealand
-    Transverse Mercator (NZTM) CRS, and decimal degrees for the WGS84 CRS.
+    distance units.
     """
     _validate_positive_real(R, "R")
+    _validate_origin_pair(ox, oy)
+
     if minx > maxx:
         raise ValueError("minx must be <= maxx")
     if miny > maxy:
@@ -273,25 +297,41 @@ def make_grid_from_bounds(
 
     _warn_if_geographic_crs(crs)
 
-    if ox is None or oy is None:
+    if ox is None and oy is None:
+        # Cover the rectangle with a grid whose bottom-left cell lies at minx, miny.
+        # A column of i such cells has covering height >= (2*i - 1)*r,
+        # where r = K*R, so
         nrows = math.ceil((maxy - miny) / (2 * K * R) + 1 / 2)
+        # A row of j such cells has covering width >= (3*j - 2)*R/2, so
         ncols = math.ceil(2 * (maxx - minx) / (3 * R) + 2 / 3)
         grid = make_grid(nrows=nrows, ncols=ncols, x0=minx, y0=miny, R=R)
     else:
+        assert ox is not None and oy is not None
+
+        # First translate the calculation to a hex grid with origin hexagon at (0, 0).
         minx -= ox
         miny -= oy
         maxx -= ox
         maxy -= oy
 
+        # Then cover the rectangle with a hex grid.
+        # To that end, start by getting the double coordinates of the hexagons covering
+        # the rectangle's southwest and northeast corners.
         a0, b0 = cartesian_to_double(minx, miny, R)
         a1, b1 = cartesian_to_double(maxx, maxy, R)
-        ncols = a1 - a0 + 1
-        nrows = (b1 - b0) // 2 + 1
+        ncols = int(a1 - a0 + 1)
+        nrows = int((b1 - b0) // 2 + 1)
 
+        # center of southwest hexagon H0
         x0, y0 = double_to_cartesian(a0, b0, R)
+        # center of northwest hexagon H1
         x1, y1 = double_to_cartesian(a1, b1, R)
 
+        # Adjust H0, H1, nrows, ncols as necessary to handle four edge cases
         if minx < x0 - R / 2:
+            # Grid not covering left edge of rectangle,
+            # so shift H0 to its southwest neighbor, add a column,
+            # and update H1 center
             x0 -= 3 * R / 2
             y0 -= K * R
             a0 -= 1
@@ -300,10 +340,15 @@ def make_grid_from_bounds(
                 y1 -= K * R
             ncols += 1
         if miny < y0 and ncols > 1:
+            # Grid not covering bottom edge of rectangle,
+            # so shift H0 to its south neighbor and add a row.
+            # H1 center remains unchanged after row addition.
             y0 -= 2 * K * R
             b0 -= 2
             nrows += 1
         if maxx > x1 + R / 2:
+            # Grid not covering right edge of rectangle,
+            # so add a column and update H1 center
             x1 += 3 * R / 2
             if ncols % 2 == 0:
                 y1 -= K * R
@@ -311,19 +356,23 @@ def make_grid_from_bounds(
                 y1 += K * R
             ncols += 1
         if maxy > y1 and ncols > 1:
+            # Grid not covering top edge of rectangle,
+            # so add a row.
             nrows += 1
 
+        # Translate grid labels to those relative to an origin hexagon at (ox, oy).
         grid = make_grid(
             nrows=nrows,
             ncols=ncols,
             x0=x0 + ox,
             y0=y0 + oy,
             R=R,
-            a0=a0,
-            b0=b0,
+            a0=int(a0),
+            b0=int(b0),
         )
 
-    grid.crs = crs
+    if crs is not None:
+        grid = grid.set_crs(crs)
     return grid
 
 
@@ -360,11 +409,6 @@ def mp_apply(
     if n <= max_batch_size:
         return my_func(df)
 
-    if max_batch_size <= 0:
-        raise ValueError("max_batch_size must be positive")
-    if num_workers <= 0:
-        raise ValueError("num_workers must be positive")
-
     # Use pandas slicing, not np.array_split, to preserve DataFrame/GeoDataFrame type
     chunks = [df.iloc[i : i + max_batch_size] for i in range(0, n, max_batch_size)]
 
@@ -377,21 +421,20 @@ def mp_apply(
 def make_grid_from_gdf(
     g: gpd.GeoDataFrame,
     R: float,
-    ox: float = 0,
-    oy: float = 0,
+    ox: float | None = 0,
+    oy: float | None = 0,
     trim_mode: None | Literal["intersect", "clip"] = "intersect",
     max_batch_size: int = 5_000,
 ) -> gpd.GeoDataFrame:
     """
-    Return flat-top hexagon grid of circumradius ``R`` with m rows and n columns,
+    Return a flat-top hexagon grid of circumradius ``R`` with m rows and n columns,
     where m and n are minimal such that the grid covers the total bounds of the
     given GeoDataFrame ``g``.
 
-    Label the hexagons with double coordinate cell IDs (see :func:`make_grid`)
+    Label the hexagons with double-coordinate cell IDs (see :func:`make_grid`)
     relative to a 0,0 hexagon centered at point ``(ox, oy)``, which does not
     necessarily appear in the grid. The grid will lie in the plane of ``g``'s CRS
-    and will use its distance units, e.g. no units for no CRS, metres for the New
-    Zealand Transverse Mercator (NZTM) CRS, and decimal degrees for the WGS84 CRS.
+    and will use its distance units.
 
     If ``trim_mode == 'intersect'``, then return only the hexagons that intersect
     ``g``. This performs a spatial join under the hood.
@@ -406,8 +449,9 @@ def make_grid_from_gdf(
     _validate_positive_real(R, "R")
     _validate_positive_int(max_batch_size, "max_batch_size")
     _validate_trim_mode(trim_mode)
-    g = _validate_geodataframe(g)
+    _validate_origin_pair(ox, oy)
 
+    g = _validate_geodataframe(g)
     grid = make_grid_from_bounds(*g.total_bounds, R=R, ox=ox, oy=oy, crs=g.crs)
 
     if trim_mode == "intersect":
