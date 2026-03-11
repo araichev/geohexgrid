@@ -5,11 +5,13 @@ import functools
 import math
 import multiprocessing as mp
 import numbers
+import warnings
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely.geometry as sg
+from pyproj import CRS
 
 
 #: For multiprocessing
@@ -63,6 +65,25 @@ def _validate_geodataframe(g: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         raise ValueError("g must contain at least one non-empty geometry")
 
     return g
+
+
+def _warn_if_geographic_crs(crs) -> None:
+    if crs is None:
+        return
+
+    try:
+        parsed = CRS.from_user_input(crs)
+    except Exception:
+        return
+
+    if parsed.is_geographic:
+        warnings.warn(
+            "The CRS is geographic, so R and all grid dimensions are interpreted "
+            "in angular units (usually degrees), not linear units like metres. "
+            "For distance-based hexagon sizes, reproject to a projected CRS first.",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 # -----------------------------
@@ -134,7 +155,7 @@ def double_to_cartesian(a: float, b: float, R: float) -> tuple[float]:
 def make_grid_points(nrows, ncols, R: float = 1, x0: float = 0, y0: float = 0):
     """
     Make the vertices and centers of a flat-top hexagon grid of circumradius ``R``
-    with ``nrows`` rows, ``ncols`` columns, and bottom left hexagon centerd at
+    with ``nrows`` rows, ``ncols`` columns, and bottom left hexagon centered at
     ``(x0, y0)``.
 
     A row is a left-to-right northeast-neighbor-southeast-neighbor zig-zag of
@@ -202,28 +223,19 @@ def make_grid(
     X, Y = make_grid_points(nrows=nrows, ncols=ncols, x0=x0, y0=y0, R=R)
     y = Y[:, 0]
 
-    # Use double coordinates for cell IDs
     cell_id = [
         f"{a0 + j},{b0 + 2 * i + j % 2}" for i in range(nrows) for j in range(ncols)
     ]
 
-    """
-    Make hexagons, each of which has vertex order:
-        v4    v3
-
-    v5             v2
-
-        v0    v1
-    """
     geometry = [
         sg.Polygon(
             [
-                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2]],  # v0
-                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2]],  # v1
-                [X[j % 2 + 1][3 * j // 2 + 2], y[2 * i + j % 2 + 1]],  # v2
-                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2 + 2]],  # v3
-                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2 + 2]],  # v4
-                [X[j % 2 + 1][3 * j // 2], y[2 * i + j % 2 + 1]],  # v5
+                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2]],
+                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2]],
+                [X[j % 2 + 1][3 * j // 2 + 2], y[2 * i + j % 2 + 1]],
+                [X[j % 2][math.ceil((3 * j + 2) / 2)], y[2 * i + j % 2 + 2]],
+                [X[j % 2][(3 * j + 1) // 2], y[2 * i + j % 2 + 2]],
+                [X[j % 2 + 1][3 * j // 2], y[2 * i + j % 2 + 1]],
             ]
         )
         for i in range(nrows)
@@ -244,7 +256,7 @@ def make_grid_from_bounds(
 ) -> gpd.GeoDataFrame:
     """
     Return flat-top hexagon grid of circumradius ``R`` with m rows and n columns,
-    where m and n are minimial such that the grid covers the rectangle whose
+    where m and n are minimal such that the grid covers the rectangle whose
     coordinate extrema are ``minx``, ``miny``, ``maxx``, ``maxy``.
 
     Label the hexagons with double coordinate cell IDs (see :func:`make_grid`)
@@ -259,39 +271,27 @@ def make_grid_from_bounds(
     if miny > maxy:
         raise ValueError("miny must be <= maxy")
 
+    _warn_if_geographic_crs(crs)
+
     if ox is None or oy is None:
-        # Cover the rectangle with a grid whose bottom-left cell lies at minx, miny.
-        # A column of i such cells has covering height >= (2*i - 1)*r,
-        # where r = K*R, so
         nrows = math.ceil((maxy - miny) / (2 * K * R) + 1 / 2)
-        # A row of j such cells has covering width >= (3*j - 2)*R/2, so
         ncols = math.ceil(2 * (maxx - minx) / (3 * R) + 2 / 3)
         grid = make_grid(nrows=nrows, ncols=ncols, x0=minx, y0=miny, R=R)
     else:
-        # First translate the calculation to a hex grid with origin hexagon at (0, 0).
         minx -= ox
         miny -= oy
         maxx -= ox
         maxy -= oy
 
-        # Then cover the rectangle with a hex grid.
-        # To that end, start by getting the double coordinates of the hexagons covering
-        # the rectangle's southwest and northeast corners.
         a0, b0 = cartesian_to_double(minx, miny, R)
         a1, b1 = cartesian_to_double(maxx, maxy, R)
         ncols = a1 - a0 + 1
         nrows = (b1 - b0) // 2 + 1
 
-        # center of southwest hexagon H0
         x0, y0 = double_to_cartesian(a0, b0, R)
-        # center of northwest hexagon H1
         x1, y1 = double_to_cartesian(a1, b1, R)
 
-        # Adjust H0, H1, nrows, ncols as necessary to handle four (literal) edge cases
         if minx < x0 - R / 2:
-            # Grid not covering left edge of rectangle,
-            # so shift H0 to its southwest neighbor, add a column,
-            # and update H1 center
             x0 -= 3 * R / 2
             y0 -= K * R
             a0 -= 1
@@ -300,15 +300,10 @@ def make_grid_from_bounds(
                 y1 -= K * R
             ncols += 1
         if miny < y0 and ncols > 1:
-            # Grid not covering bottom edge of rectangle,
-            # so shift H0 to its south neighbor and add a row.
-            # H1 center remains unchanged after row addition.
             y0 -= 2 * K * R
             b0 -= 2
             nrows += 1
         if maxx > x1 + R / 2:
-            # Grid not covering right edge of rectangle,
-            # so add a column and update H1 center
             x1 += 3 * R / 2
             if ncols % 2 == 0:
                 y1 -= K * R
@@ -316,12 +311,8 @@ def make_grid_from_bounds(
                 y1 += K * R
             ncols += 1
         if maxy > y1 and ncols > 1:
-            # Grid not covering top edge of rectangle,
-            # so add a row.
-            # No need to update H1 center because not used anymore.
             nrows += 1
 
-        # Translate grid labels to those relative to an origin hexagon at (ox, oy).
         grid = make_grid(
             nrows=nrows,
             ncols=ncols,
@@ -393,7 +384,7 @@ def make_grid_from_gdf(
 ) -> gpd.GeoDataFrame:
     """
     Return flat-top hexagon grid of circumradius ``R`` with m rows and n columns,
-    where m and n are minimial such that the grid covers the total bounds of the
+    where m and n are minimal such that the grid covers the total bounds of the
     given GeoDataFrame ``g``.
 
     Label the hexagons with double coordinate cell IDs (see :func:`make_grid`)
