@@ -79,6 +79,13 @@ Notes
 Changes
 =======
 
+3.0.1, 2026-03-12
+-----------------
+- Added stronger validation for grid dimensions, radius, trim mode, and GeoDataFrame inputs.
+- Added a warning when using geographic CRSs, since grid sizes are then interpreted in angular units.
+- Fixed mp_apply().
+- Fixed packaging metadata in pyproject.toml.
+
 3.0.0, 2025-06-24
 -----------------
 - Breaking change: changed signature of ``main.make_grid_from_gdf`` with ``trim_mode`` option.

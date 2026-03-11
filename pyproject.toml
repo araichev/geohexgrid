@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "geohexgrid"
-version = "3.0.0"
+version = "3.0.1"
 description = "A Python library for making geographic flat-top hexagon grids like QGIS's create grid function"
 readme = "README.rst"
 requires-python = ">=3.10"
