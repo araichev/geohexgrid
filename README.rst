@@ -11,7 +11,7 @@ Here a **hexagonal grid**, or **hex grid** for short, is a finite subset of a he
 A hexagonal tiling is a covering of the plane with regular hexagons in which exactly three hexagons meet at each vertex.
 (For more details, see `the Wikipedia article on hexagonal tilings <https://en.wikipedia.org/wiki/Hexagonal_tiling>`_.)
 The **circumradius** of a hex grid is the circumradius of any one of its hexagons, that is, the radius of a circle circumscribing any one of the hexagons.
-This library favours the word 'grid' over 'tiling', because 'grid' is used more often in geographic context, the main context of this library.
+This library favors the word 'grid' over 'tiling', because 'grid' is used more often in geographic context, the main context of this library.
 
 The two main features of this library are
 
@@ -49,7 +49,7 @@ Here's a typical example.
 But why hexagons?!
 Because `hexagons are the bestagons <https://www.youtube.com/watch?v=thOifuHs6eY>`_.
 More seriously, no one grid type works best for all geographic applications.
-MRCagney, this library's funder, often works with isochrones, which favour simple convex equal area grids with equidistant neighbour cells, that is, hex grids.
+MRCagney, this library's funder, often works with isochrones, which favor simple convex equal area grids with equidistant neighbor cells, that is, hex grids.
 
 
 Authors
@@ -69,9 +69,8 @@ See the Marimo notebook at ``notebooks/examples.py``.
 
 Notes
 ======
-- This project's development status is Alpha.
-  Alex uses this project for work and changes it breakingly when it suits his needs.
-- This project uses semantic versioning.
+- This project uses semantic versioning for release numbering.
+- Its current development status is Alpha, which means interfaces and behavior may still change in ways that are more disruptive than users of mature libraries should expect.
 - Thanks to `MRCagney <https://mrcagney.com>`_ for periodically funding this project.
 - Red Blog Games has a `great write up of hexagonal grids <https://www.redblobgames.com/grids/hexagons>`_ for computer games.
 - Alex wanted to chose a shorter name for this package, such as 'hexgrid', 'geohex', or 'hexcover', but those were already taken or too close to taken on PyPI.
@@ -79,6 +78,13 @@ Notes
 
 Changes
 =======
+
+3.0.1, 2026-03-12
+-----------------
+- Added stronger validation for grid dimensions, radius, trim mode, and GeoDataFrame inputs.
+- Added a warning when using geographic CRSs, since grid sizes are then interpreted in angular units.
+- Fixed mp_apply().
+- Fixed packaging metadata in pyproject.toml.
 
 3.0.0, 2025-06-24
 -----------------
