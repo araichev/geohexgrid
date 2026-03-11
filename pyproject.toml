@@ -26,17 +26,9 @@ classifiers = [
 dependencies = [
   "geopandas>=0.11.1",
   "numpy",
-  "pandas",
+  "pandas>=2",
   "shapely",
 ]
-
-[project.urls]
-Homepage = "https://github.com/araichev/geohexgrid"
-Repository = "https://github.com/araichev/geohexgrid"
-Issues = "https://github.com/araichev/geohexgrid/issues"
-
-[tool.hatch.build.targets.wheel]
-packages = ["geohexgrid"]
 
 [dependency-groups]
 dev = [
@@ -47,6 +39,15 @@ dev = [
   "pytest>=7.1.2",
   "ruff>=0.1.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/araichev/geohexgrid"
+Repository = "https://github.com/araichev/geohexgrid"
+Issues = "https://github.com/araichev/geohexgrid/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["geohexgrid"]
+
 
 [tool.ruff]
 line-length = 90

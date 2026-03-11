@@ -145,7 +145,9 @@ def make_grid(
     X, Y = make_grid_points(nrows=nrows, ncols=ncols, x0=x0, y0=y0, R=R)
     y = Y[:, 0]
     # Use double coordinates for cell IDs
-    cell_id = [f"{a0 + j},{b0 + 2*i + j%2}" for i in range(nrows) for j in range(ncols)]
+    cell_id = [
+        f"{a0 + j},{b0 + 2 * i + j % 2}" for i in range(nrows) for j in range(ncols)
+    ]
     """
     Make hexagons, each of which has vertex order:
 
@@ -268,7 +270,7 @@ def make_grid_from_bounds(
 def mp_apply(
     my_func: Callable,  # Using 'func' conflicts with Pandas pipe() method
     df: pd.DataFrame | gpd.GeoDataFrame,
-    max_batch_size: int = 5_000,
+    max_batch_size=5_000,
     num_workers=NUM_CPUS,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     """
@@ -291,15 +293,20 @@ def mp_apply(
         >>> mp_apply(func, sites)
 
     """
-    n = df.shape[0]
+    n = len(df)
     if n <= max_batch_size:
         return my_func(df)
 
-    num_batches = math.ceil(n / max_batch_size)
-    frames = []
+    if max_batch_size <= 0:
+        raise ValueError("max_batch_size must be positive")
+    if num_workers <= 0:
+        raise ValueError("num_workers must be positive")
+
+    # Use pandas slicing, not np.array_split, to preserve DataFrame/GeoDataFrame type
+    chunks = [df.iloc[i : i + max_batch_size] for i in range(0, n, max_batch_size)]
+
     with mp.Pool(num_workers) as pool:
-        for r in pool.map(my_func, np.array_split(df, num_batches)):
-            frames.append(r)
+        frames = pool.map(my_func, chunks)
 
     return pd.concat(frames, ignore_index=True)
 
