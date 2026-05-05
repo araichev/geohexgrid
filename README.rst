@@ -1,11 +1,3 @@
-[!IMPORTANT]
-**This repository has moved.**
-Because GitHub's performance has degraded significantly, this repository has moved to Forgejo. Active development continues at **https://git.disroot.org/araichev/geohexgrid**.
-This GitHub copy is archived and will not receive updates, issues, or pull requests.
-Please file issues and submit changes on Forgejo.
-
----
-
 Geohexgrid
 **********
 .. image:: https://github.com/mrcagney/geohexgrid/actions/workflows/test.yml/badge.svg
