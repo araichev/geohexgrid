@@ -1,3 +1,12 @@
+[!IMPORTANT]
+
+**This repository has moved to Codeberg, because Github is deteriorating**.
+
+Development continues at **https://codeberg.org/araichev/geohexgrid**, so please file issues, pull requests, etc. there.
+This GitHub repository is archived.
+
+---
+
 Geohexgrid
 **********
 .. image:: https://github.com/mrcagney/geohexgrid/actions/workflows/test.yml/badge.svg
